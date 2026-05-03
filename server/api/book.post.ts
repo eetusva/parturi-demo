@@ -8,6 +8,27 @@ const timeToMinutes = (timeStr: string) => {
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event)
+    
+    // --- INPUT VALIDATION ---
+    // Estetään XSS ja roskadata
+    const nameRegex = /^[a-zA-Z0-9åäöÅÄÖ\s\-'.]{2,50}$/
+    const phoneRegex = /^[0-9\s\+\-]{5,20}$/
+
+    if (!nameRegex.test(body.customer_name)) {
+        throw createError({
+            statusCode: 400,
+            statusMessage: 'Virheellinen nimi. Käytä vain kirjaimia ja tavallisia merkkejä.'
+        })
+    }
+
+    if (!phoneRegex.test(body.phone)) {
+        throw createError({
+            statusCode: 400,
+            statusMessage: 'Virheellinen puhelinnumero. Syötä vain numeroita.'
+        })
+    }
+    // ------------------------
+
     const supabase = await serverSupabaseClient(event)
     
     // Hae asiakkaan IP-osoite
