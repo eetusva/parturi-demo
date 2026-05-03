@@ -9,6 +9,27 @@ const timeToMinutes = (timeStr: string) => {
 export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     const supabase = await serverSupabaseClient(event)
+    
+    // Hae asiakkaan IP-osoite
+    const ip = getRequestIP(event, { xForwardedFor: true }) || 'unknown'
+
+    // --- RATE LIMITING ---
+    // Tarkistetaan, onko tästä IP:stä tehty yli 3 varausta viimeisen tunnin aikana
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    
+    const { count, error: countError } = await supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_ip', ip)
+        .gt('created_at', oneHourAgo)
+
+    if (count !== null && count >= 3) {
+        throw createError({
+            statusCode: 429,
+            statusMessage: 'Liikaa varausyrityksiä samasta osoitteesta. Odota hetki ennen uutta varausta.'
+        })
+    }
+    // ---------------------
 
     // Hae palvelun kesto tietokannasta
     const { data: serviceData } = await supabase
@@ -19,7 +40,7 @@ export default defineEventHandler(async (event) => {
 
     const duration_minutes = serviceData?.duration_minutes || 30
 
-    // Osa 1: Tarkista päällekkäisyydet (Overlap check koodissa)
+    // Osa 1: Tarkista päällekkäisyydet
     const { data: existingBookings } = await supabase
         .from('bookings')
         .select('booking_time, duration_minutes')
@@ -52,6 +73,7 @@ export default defineEventHandler(async (event) => {
                 booking_date: body.booking_date,
                 booking_time: body.booking_time,
                 duration_minutes: duration_minutes,
+                client_ip: ip,
                 status: 'confirmed'
             }
         ])
@@ -63,22 +85,9 @@ export default defineEventHandler(async (event) => {
         })
     }
 
-    // 2. Lähetä SMS-ilmoitus yrittäjälle (Demototeutus)
-    // Tässä kohtaa käytettäisiin oikeaa palvelua, esim. Twilio
-    /*
-    import twilio from 'twilio'
-    const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN)
-    await client.messages.create({
-      body: `Uusi varaus: ${body.customer_name}, ${body.service} ${body.booking_date} klo ${body.booking_time}. Puh: ${body.phone}`,
-      from: '+1234567890', // Twilio numero
-      to: '+35815336638'   // Yrittäjän numero
-    })
-    */
-
     // Tulostetaan vain palvelimen konsoliin demon vuoksi
-    console.log('--- SMS LÄHETETTY YRITTÄJÄLLE ---')
-    console.log(`Uusi varaus: ${body.customer_name}, ${body.service} ${body.booking_date} klo ${body.booking_time}. Puh: ${body.phone}`)
-    console.log('---------------------------------')
+    console.log(`--- UUSI VARAUS (IP: ${ip}) ---`)
+    console.log(`Asiakas: ${body.customer_name}, Palvelu: ${body.service}, Aika: ${body.booking_date} klo ${body.booking_time}`)
 
     return { success: true }
-})
+})
