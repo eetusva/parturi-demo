@@ -388,8 +388,9 @@ const submitBooking = async () => {
     availableTimes.value = []
   } catch (error) {
     console.error('Error booking:', error)
+    const message = error.data?.statusMessage || error.statusMessage || 'Varauksessa tapahtui virhe. Yritä myöhemmin uudelleen.'
     if (typeof window !== 'undefined') {
-      window.alert('Varauksessa tapahtui virhe. Varmista, että olet luonut bookings-taulun Supabaseen!')
+      window.alert(message)
     }
   } finally {
     isLoading.value = false
